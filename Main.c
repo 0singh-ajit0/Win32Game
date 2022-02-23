@@ -20,6 +20,13 @@ int __stdcall WinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE PreviousInstan
 	UNREFERENCED_PARAMETER(CommandLine);
 	UNREFERENCED_PARAMETER(CmdShow);
 
+	MSG Message = { 0 };
+	int64_t FrameStart = 0; // Time at frame startup
+	int64_t FrameEnd = 0; // Time at frame completion
+	int64_t ElapsedMicrosecondsPerFrame = 0;
+	int64_t ElapsedMicorsecondsPerFrameAccumulatorRaw = 0;
+	int64_t ElapsedMicorsecondsPerFrameAccumulatorCooked = 0;
+
 	if (GameIsAlreadyRunning() == TRUE)
 	{
 		MessageBoxA(NULL, "Another Instance of this game is already running!", "Error!", MB_ICONEXCLAMATION | MB_OK);
@@ -37,7 +44,7 @@ int __stdcall WinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE PreviousInstan
 		goto Exit;
 	}
 
-	QueryPerformanceFrequency(&gPerformanceData.PerfFrequency);
+	QueryPerformanceFrequency((LARGE_INTEGER*) & gPerformanceData.PerfFrequency);
 
 	gBackBuffer.BitmapInfo.bmiHeader.biSize = sizeof(gBackBuffer.BitmapInfo.bmiHeader);
 	gBackBuffer.BitmapInfo.bmiHeader.biWidth = GAME_RES_WIDTH;
@@ -68,14 +75,12 @@ int __stdcall WinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE PreviousInstan
 	//ShowWindow(WindowHandle, CmdShow);
 	//UpdateWindow(WindowHandle);
 
-	MSG Message = { 0 };
-
 	gGameIsRunning = TRUE;
 
 	while (gGameIsRunning)
 	// Eg. People may write above cond. like this -> gGameIsRunning = TRUE but compiler won't warn them about this. But if he/she writes TRUE = gGameIsRunning compiler will warn
 	{
-		QueryPerformanceCounter(&gPerformanceData.FrameStart);
+		QueryPerformanceCounter((LARGE_INTEGER*) &FrameStart);
 		/*Using PeekMessage instead of GetMessage because unlike GetMessage, the PeekMessage function does not wait for a message to be posted before returning.*/
 		while (PeekMessageA(&Message, gGameWindow, 0, 0, PM_REMOVE))
 		{
@@ -90,24 +95,53 @@ int __stdcall WinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE PreviousInstan
 		ProcessPlayerInput();
 		RenderGameGraphics();
 
-		QueryPerformanceCounter(&gPerformanceData.FrameEnd);
+		QueryPerformanceCounter((LARGE_INTEGER*) &FrameEnd);
 
-		gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart = gPerformanceData.FrameEnd.QuadPart - gPerformanceData.FrameStart.QuadPart;
+		ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
 		// FrameStart and FrameEnd are in seconds. Convert it to microseconds to guard against loss-of-precision before dividing it by number of ticks-per-second.
 
-		gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart *= 1000000;
+		ElapsedMicrosecondsPerFrame *= 1000000;
 
-		gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart /= gPerformanceData.PerfFrequency.QuadPart;
-
-		Sleep(1);
+		ElapsedMicrosecondsPerFrame /= gPerformanceData.PerfFrequency;
 
 		gPerformanceData.TotalFramesRendered++;
 
+		ElapsedMicorsecondsPerFrameAccumulatorRaw += ElapsedMicrosecondsPerFrame;
+
+		while (ElapsedMicrosecondsPerFrame <= TARGET_MICROSECONDS_PER_FRAME)
+		{
+			Sleep(0);
+			ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
+			ElapsedMicrosecondsPerFrame *= 1000000;
+			ElapsedMicrosecondsPerFrame /= gPerformanceData.PerfFrequency;
+
+			QueryPerformanceCounter((LARGE_INTEGER*) & FrameEnd);
+		}
+
+		ElapsedMicorsecondsPerFrameAccumulatorCooked += ElapsedMicrosecondsPerFrame;
+
 		if ((gPerformanceData.TotalFramesRendered % CALCULATE_AVG_FPS_EVERY_X_FRAMES) == 0)
 		{
-			char str[64] = { 0 };
-			_snprintf_s(str, _countof(str), _TRUNCATE, "Elapsed Microseconds: %lli\n", gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart);
+			char str[128] = { 0 };
+			int64_t AverageMicrosecondsPerFrameRaw = ElapsedMicorsecondsPerFrameAccumulatorRaw / CALCULATE_AVG_FPS_EVERY_X_FRAMES;
+			int64_t AverageMicrosecondsPerFrameCooked = ElapsedMicorsecondsPerFrameAccumulatorCooked / CALCULATE_AVG_FPS_EVERY_X_FRAMES;
+
+			gPerformanceData.RawFPSAverage = 1.0f / ((ElapsedMicorsecondsPerFrameAccumulatorRaw / 60) * 0.000001f);
+			gPerformanceData.CookedFPSAverage = 1.0f / ((ElapsedMicorsecondsPerFrameAccumulatorCooked / 60) * 0.000001f);
+
+			_snprintf_s(
+				str, 
+				_countof(str), 
+				_TRUNCATE, 
+				"Avg Milliseconds/frame: %.02f\tAvg FPS Cooked: %.01f\tAvg FPS Raw: %.01f\n", 
+				(AverageMicrosecondsPerFrameRaw * 0.001f),
+				gPerformanceData.CookedFPSAverage,
+				gPerformanceData.RawFPSAverage
+			);
+
 			OutputDebugStringA(str);
+			ElapsedMicorsecondsPerFrameAccumulatorRaw = 0;
+			ElapsedMicorsecondsPerFrameAccumulatorCooked = 0;
 		}
 	}
 
