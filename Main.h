@@ -11,6 +11,10 @@
 #pragma warning(disable: 4820) // Disable Warning about Struct padding
 #pragma warning(disable: 5045) // Disable Warning about Spectre/Meltdown CPU vulnerability
 
+typedef LONG(NTAPI* _NtQueryTimerResolution) (OUT PULONG MinimumResolution, OUT PULONG MaximumResolution, OUT PULONG CurrentResolution);
+
+_NtQueryTimerResolution NtQueryTimerResolution;
+
 //#pragma pack(1) // This line will tell compiler to don't pad the data structure
 typedef struct GAMEBITMAP
 {
@@ -36,6 +40,10 @@ typedef struct GAMEPERFDATA
 	MONITORINFO MonitorInfo;
 	int32_t MonitorWidth;
 	int32_t MonitorHeight;
+	BOOL DisplayDebugInfo;
+	LONG MinimumTimerResolution;
+	LONG MaximumTimerResolution;
+	LONG CurrentTimerResolution;
 } GAMEPERFDATA;
 
 
@@ -44,3 +52,4 @@ DWORD CreateMainGameWindow(void);
 BOOL GameIsAlreadyRunning(void);
 void ProcessPlayerInput(void);
 void RenderGameGraphics(void);
+void ClearScreen(_In_ __m128i Color);
