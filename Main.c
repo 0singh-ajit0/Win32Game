@@ -14,7 +14,6 @@ BOOL gGameIsRunning;
 GAMEBITMAP gBackBuffer;
 GAMEPERFDATA gPerformanceData;
 
-
 int __stdcall WinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE PreviousInstance, _In_ PSTR CommandLine, _In_ int CmdShow)
 {
 	UNREFERENCED_PARAMETER(Instance);
